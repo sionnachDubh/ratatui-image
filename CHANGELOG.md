@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `Image` does not render with clipping under Kitty or Halfblocks, to be consistent with Sixels and
+  ITerm2.
+
+### Added
+- `Image::alow_clipping(bool)` to allow clipping under Kitty and Halfblocks.
+
 ## [11.0.0-alpha.3](https://github.com/ratatui/ratatui-image/compare/v11.0.0-alpha.2...v11.0.0-alpha.3) - 2026-05-05
 
 ### Other

@@ -50,65 +50,72 @@ that will be covered by the image and skip drawing over the image.
 
 ## Quick start
 ```rust
-use ratatui::{backend::TestBackend, Terminal, Frame};
-use ratatui_image::{picker::Picker, StatefulImage, protocol::StatefulProtocol};
+use ratatui::{backend::TestBackend, layout::Size, Terminal, Frame};
+use ratatui_image::{Image, picker::Picker, protocol::Protocol, Resize};
 
 struct App {
-    // We need to hold the render state.
-    image: StatefulProtocol,
+    // We need to hold the image data somewhere.
+    image: Protocol,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = TestBackend::new(80, 30);
     let mut terminal = Terminal::new(backend)?;
 
-    // Should use Picker::from_query_stdio() to get the font size and protocol,
+    // Should use `Picker::from_query_stdio()?` to get the font size and protocol,
     // but we can't put that here because that would break doctests!
     let mut picker = Picker::halfblocks();
 
     // Load an image with the image crate.
     let dyn_img = image::ImageReader::open("./assets/Ada.png")?.decode()?;
 
-    // Create the Protocol which will be used by the widget.
-    let image = picker.new_resize_protocol(dyn_img);
+    let font_size = picker.font_size();
+    let size = Size::new(
+        dyn_img.width().div_ceil(font_size.width as u32) as u16,
+        dyn_img.height().div_ceil(font_size.height as u32) as u16,
+    );
+
+    // Create the Protocol once, or in other words, transform the image data to Sixels, Kitty
+    // data, iTerm2 base64 PNG data, or some kind of ASCII-art.
+    let image = picker.new_protocol(dyn_img, size, Resize::Fit(None))?;
 
     let mut app = App { image };
 
     // This would be your typical `loop {` in a real app:
-    terminal.draw(|f| ui(f, &mut app))?;
-    // It is recommended to handle the encoding result
-    app.image.last_encoding_result().unwrap()?;
+    terminal.draw(|f| {
+        let image = Image::new(&app.image);
+        // Rendering the transformed data is now cheap.
+        f.render_widget(image, f.area());
+    });
+
     Ok(())
 }
-
-fn ui(f: &mut Frame<'_>, app: &mut App) {
-    // The image widget.
-    let image = StatefulImage::default();
-    // Render with the protocol state.
-    f.render_stateful_widget(image, f.area(), &mut app.image);
-}
 ```
+While this approach is usually sufficient, and leaves a lot of room for customizing where the
+image actually gets transformed, for more advanced usage I really recommend using
+[`thread::ThreadProtocol`] and looking at `excamples/thread.rs` to get an idea how to
+dynamically resize images to fit into some area but without blocking the UI.
 
 The [picker::Picker] helper is there to do all this font-size and graphics-protocol guessing,
 and also to map character-cell-size to pixel size so that we can e.g. "fit" an image inside
 a desired columns+rows bound, and so on.
 
 ## Widget choice
-* The [Image] widget has a fixed size in rows/columns. If the image pixel size exceeds the
-  pixel area of the rows/columns, the image is scaled down proportionally to "fit" once.
+* The [`Image`] widget has a fixed size in rows/columns. If the image pixel size exceeds the
+  pixel area of the rows/columns, the image is scaled down proportionally to "fit" once, at the
+  creation time of the [`Protocol`].
   The big upside is that this widget is _stateless_ (in terms of ratatui, i.e. immediate-mode),
   and thus can never block the rendering thread/task. A lot of ratatui apps only use stateless
   widgets, so this factor is also important when chosing.
-  **Platform note** On the iterm2 and sixel protocols, if the actual rendering area is smaller
-  than the initial rows/columns, it is simply not rendered at all. Whereas on kitty protocol or
-  when falling back to halfblocks, the image is cropped to fit the rendering area.
+  What happens when the image does not fit into the render area can be controlled with
+  [`Image::allow_clipping`].
 * The [StatefulImage] widget adapts to its render area at render-time. It can be set to fit,
   crop, or scale to the available render area.
   This means the widget must be stateful, i.e. use `render_stateful_widget` which takes a
   mutable state parameter.
-  The resizing and encoding is blocking, and since it happens at render-time it is a good idea
-  to offload that to another thread or async task, if the UI must be responsive (see
-  `examples/thread.rs` and `examples/tokio.rs`).
+  The resizing and encoding is blocking, and since it happens at render-time, it should always
+  be offloaded to another thread or async task, to keep the UI responsive (see
+  `examples/thread.rs` and `examples/tokio.rs` on how to use [`thread::ThreadProtocol`]).
 
 ## Examples
 
@@ -116,6 +123,8 @@ a desired columns+rows bound, and so on.
 * `examples/thread.rs` shows how to offload resize and encoding to another thread, to avoid
   blocking the UI thread.
 * `examples/tokio.rs` same as `thread.rs` but with tokio.
+* `examples/sliced.rs` shows how to use an image that can have "rows" or "horizontal slices"
+  partially hidden with any protocol.
 
 The lib also includes a binary that renders an image file, but it is focused on testing.
 
@@ -137,7 +146,7 @@ The lib also includes a binary that renders an image file, but it is focused on 
 * If you absolutely don't want to deal with libchafa, then you should use
   `--no-default-features --features image-defaults,crossterm` or a variation thereof.
 
-Note: The chafa features are mutually exclusive - only enable one at a time.
+Note: The chafa features are mutually exclusive - enable only one at a time.
 
 #### Others
 

@@ -274,7 +274,7 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
                 f.render_widget(Clear {}, placeholder.inner(placeholder_area));
                 f.render_widget(placeholder, placeholder_area);
             } else {
-                let image = Image::new(&app.image_static);
+                let image = Image::new(&app.image_static).allow_clipping(true);
                 f.render_widget(image, area);
             }
         }
