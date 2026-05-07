@@ -191,21 +191,24 @@ impl App {
             'j' => {
                 let (_, y, _, _) = &mut self.image_sliced_position;
                 if let Some(viewport) = self.image_sliced_viewport
-                    && (*y < 0 || (*y as u16) < viewport.height - 1)
+                    && (*y < 0 || (*y as u16) < viewport.height.saturating_sub(1))
                 {
                     *y += 1;
                 }
             }
             'k' => {
                 let (_, y, _, _) = &mut self.image_sliced_position;
-                if *y > 0 || y.unsigned_abs() < self.image_sliced.size().height - 1 {
+                if *y > 0 || y.unsigned_abs() < self.image_sliced.size().height.saturating_sub(1) {
                     *y -= 1;
                 }
             }
             'l' => {
                 let (x, _, _, _) = &mut self.image_sliced_position;
                 if let Some(viewport) = self.image_sliced_viewport
-                    && *x < viewport.width - self.image_sliced.size().width
+                    && *x
+                        < viewport
+                            .width
+                            .saturating_sub(self.image_sliced.size().width)
                 {
                     *x += 1;
                 }
@@ -251,8 +254,14 @@ impl App {
                 }
 
                 if *is_moving_rightwards {
-                    if *x >= viewport.width - self.image_sliced.size().width {
-                        *x = viewport.width - self.image_sliced.size().width - 1;
+                    if *x
+                        >= viewport
+                            .width
+                            .saturating_sub(self.image_sliced.size().width)
+                    {
+                        *x = viewport
+                            .width
+                            .saturating_sub(self.image_sliced.size().width + 1);
                         *is_moving_rightwards = false;
                     } else {
                         *x += 1;
@@ -344,15 +353,12 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
     );
     f.render_widget(block_middle_top, chunks_left_top[1]);
     if app.show_images != ShowImages::Resized {
-        let size = app.image_sliced.size();
         let (x, y, _, _) = app.image_sliced_position;
-        if area.width >= x + size.width {
-            let mut area = area;
-            area.x += x;
-            area.width -= x;
-            let image = SlicedImage::new(&app.image_sliced, y);
-            f.render_widget(image, area);
-        }
+        let mut area = area;
+        area.x += x;
+        area.width -= x;
+        let image = SlicedImage::new(&app.image_sliced, y);
+        f.render_widget(image, area);
     }
 
     let chunks_left_bottom = Layout::default()

@@ -67,6 +67,7 @@ impl Widget for SlicedImage<'_> {
         let mut image_area: Rect = self.sliced_protocol.size().into();
         image_area.x = area.x;
         image_area.y = area.y;
+        image_area.width = image_area.width.min(area.width);
 
         match &self.sliced_protocol {
             SlicedProtocol::Kitty(kitty) => {
@@ -219,7 +220,7 @@ impl SlicedProtocol {
                 Ok(SlicedProtocol::Halfblocks(halfblocks))
             }
             _ => {
-                let (slices, image_size) = Self::slice_rows(dyn_img, picker.font_size(), size);
+                let (slices, image_size) = slice_rows(dyn_img, picker.font_size(), size);
                 let row_count = slices.len() as u16;
                 let mut row_size = image_size;
                 row_size.height /= row_count;
@@ -244,43 +245,39 @@ impl SlicedProtocol {
             SlicedProtocol::Sixel(sixel_slice) => sixel_slice.borrow_owner().size(),
         }
     }
+}
 
-    /// Simply slices the DynamicImage into rows.
-    ///
-    /// Could work for any protocol, but:
-    /// * Kitty would transmit multiple times.
-    /// * Halfblocks would not render as good with chafa.
-    /// * Sixel glitches in foot, would otherwise be okay.
-    ///
-    /// So this only is used for Iterm2.
-    fn slice_rows(
-        image: DynamicImage,
-        font_size: FontSize,
-        size: Size,
-    ) -> (Vec<DynamicImage>, Size) {
-        let image = image.resize(
-            (size.width * font_size.width).into(),
-            (size.height * font_size.height).into(),
-            image::imageops::FilterType::Nearest,
-        );
+/// Simply slices the DynamicImage into rows.
+///
+/// Could work for any protocol, but:
+/// * Kitty would transmit multiple times.
+/// * Halfblocks would not render as good with chafa.
+/// * Sixel glitches in foot, would otherwise be okay.
+///
+/// So this only is used for Iterm2.
+fn slice_rows(image: DynamicImage, font_size: FontSize, size: Size) -> (Vec<DynamicImage>, Size) {
+    let image = image.resize(
+        (size.width * font_size.width).into(),
+        (size.height * font_size.height).into(),
+        image::imageops::FilterType::Nearest,
+    );
 
-        let height = image.height();
-        let width = image.width();
+    let height = image.height();
+    let width = image.width();
 
-        let row_count = (height as f64 / font_size.height as f64).ceil() as u16;
-        let mut rows = Vec::new();
+    let row_count = (height as f64 / font_size.height as f64).ceil() as u16;
+    let mut rows = Vec::new();
 
-        let font_height = font_size.height as u32;
-        for i in 0..row_count {
-            let y = i as u32 * font_height;
-            let row_height = font_height.min(height - y);
-            let cropped = image.crop_imm(0, y, width, row_height);
-            rows.push(cropped);
-        }
-
-        let col_count = (width as f64 / font_size.width as f64).ceil() as u16;
-        (rows, Size::new(col_count, row_count))
+    let font_height = font_size.height as u32;
+    for i in 0..row_count {
+        let y = i as u32 * font_height;
+        let row_height = font_height.min(height - y);
+        let cropped = image.crop_imm(0, y, width, row_height);
+        rows.push(cropped);
     }
+
+    let col_count = (width as f64 / font_size.width as f64).ceil() as u16;
+    (rows, Size::new(col_count, row_count))
 }
 
 /// Sixel "slicing" functions
@@ -553,7 +550,7 @@ mod tests {
         let font_size = FontSize::new(1, 1); // 1x1 font means 1 row per pixel row
         let size = Size::new(4, 4);
 
-        let (rows, image_size) = SlicedProtocol::slice_rows(dyn_img, font_size, size);
+        let (rows, image_size) = slice_rows(dyn_img, font_size, size);
 
         assert_eq!(rows.len(), 4); // 4 rows
         assert_eq!(image_size, Size::new(4, 4));
@@ -579,7 +576,7 @@ mod tests {
         let font_size = FontSize::new(1, 2); // font is 2 pixels tall
         let size = Size::new(4, 4); // 4 rows
 
-        let (rows, image_size) = SlicedProtocol::slice_rows(dyn_img, font_size, size);
+        let (rows, image_size) = slice_rows(dyn_img, font_size, size);
 
         assert_eq!(rows.len(), 4); // 4 rows
         assert_eq!(image_size, Size::new(4, 4));
