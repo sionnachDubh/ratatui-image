@@ -57,26 +57,38 @@ where
     <B as ratatui::backend::Backend>::Error: 'static,
 {
     let mut last_tick = Instant::now();
-    loop {
-        terminal.draw(|f| ui(f, &mut app))?;
+    terminal.draw(|f| ui(f, &mut app))?;
 
+    loop {
+        let mut needs_render = false;
         let timeout = app
             .tick_rate
             .checked_sub(last_tick.elapsed())
             .unwrap_or_else(|| Duration::from_secs(0));
         if ratatui::crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    if let KeyCode::Char(c) = key.code {
-                        app.on_key(c);
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        if let KeyCode::Char(c) = key.code {
+                            needs_render = app.on_key(c);
+                        }
                     }
                 }
+                Event::Resize(_, _) => {
+                    needs_render = true;
+                }
+                _ => {}
             }
         }
         if last_tick.elapsed() >= app.tick_rate {
-            app.on_tick();
+            needs_render |= app.on_tick();
             last_tick = Instant::now();
         }
+
+        if needs_render {
+            terminal.draw(|f| ui(f, &mut app))?;
+        }
+
         if app.should_quit {
             return Ok(());
         }

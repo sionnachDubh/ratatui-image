@@ -27,6 +27,7 @@ use ratatui_image::{
     Image, Resize, StatefulImage,
     picker::Picker,
     protocol::{Protocol, StatefulProtocol},
+    sliced::{SlicedImage, SlicedProtocol},
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -41,7 +42,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 static READY: Once = Once::new();
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum ShowImages {
     All,
     Fixed,
@@ -57,7 +58,6 @@ struct App {
     show_images: ShowImages,
 
     image_source_path: PathBuf,
-    image_static_offset: (u16, u16),
 
     picker: Picker,
     image_source: DynamicImage,
@@ -65,6 +65,9 @@ struct App {
     image_fit_state: StatefulProtocol,
     image_crop_state: StatefulProtocol,
     image_scale_state: StatefulProtocol,
+    image_sliced: SlicedProtocol,
+    image_sliced_position: (u16, i16, bool, bool), // (x,y, is_moving_rightwards, is_animating)
+    image_sliced_viewport: Option<Size>,
 }
 
 fn size() -> Size {
@@ -94,6 +97,9 @@ impl App {
         let image_crop_state = picker.new_resize_protocol(image_source.clone());
         let image_scale_state = picker.new_resize_protocol(image_source.clone());
 
+        let size = image_static.size();
+        let image_sliced = SlicedProtocol::new(&picker, image_source.clone(), size).unwrap();
+
         let mut background = String::new();
 
         let mut r: [u64; 2] = [0x8a5cd789635d2dff, 0x121fd2155c472f96];
@@ -115,7 +121,7 @@ impl App {
         Self {
             title,
             should_quit: false,
-            tick_rate: Duration::from_millis(1000),
+            tick_rate: Duration::from_millis(100),
             background,
             show_images: ShowImages::All,
             split_percent: 70,
@@ -127,11 +133,12 @@ impl App {
             image_fit_state,
             image_crop_state,
             image_scale_state,
-
-            image_static_offset: (0, 0),
+            image_sliced,
+            image_sliced_position: (0, -((size.height / 2) as i16), true, false),
+            image_sliced_viewport: None,
         }
     }
-    pub fn on_key(&mut self, c: char) {
+    pub fn on_key(&mut self, c: char) -> bool {
         match c {
             'q' => {
                 self.should_quit = true;
@@ -175,23 +182,41 @@ impl App {
                 }
             }
             'h' => {
-                if self.image_static_offset.0 > 0 {
-                    self.image_static_offset.0 -= 1;
+                let (x, _, _, _) = &mut self.image_sliced_position;
+                if *x > 0 {
+                    *x -= 1;
                 }
             }
             'j' => {
-                self.image_static_offset.1 += 1;
+                let (_, y, _, _) = &mut self.image_sliced_position;
+                if let Some(viewport) = self.image_sliced_viewport
+                    && (*y < 0 || (*y as u16) < viewport.height - 1)
+                {
+                    *y += 1;
+                }
             }
             'k' => {
-                if self.image_static_offset.1 > 0 {
-                    self.image_static_offset.1 -= 1;
+                let (_, y, _, _) = &mut self.image_sliced_position;
+                if *y > 0 || y.unsigned_abs() < self.image_static.size().height - 1 {
+                    *y -= 1;
                 }
             }
             'l' => {
-                self.image_static_offset.0 += 1;
+                let (x, _, _, _) = &mut self.image_sliced_position;
+                if let Some(viewport) = self.image_sliced_viewport
+                    && *x < viewport.width - self.image_static.size().width
+                {
+                    *x += 1;
+                }
             }
-            _ => {}
+            'a' => {
+                self.image_sliced_position.3 = !self.image_sliced_position.3;
+            }
+            _ => {
+                return false;
+            }
         }
+        true
     }
 
     fn reset_images(&mut self) {
@@ -202,9 +227,15 @@ impl App {
         self.image_fit_state = self.picker.new_resize_protocol(self.image_source.clone());
         self.image_crop_state = self.picker.new_resize_protocol(self.image_source.clone());
         self.image_scale_state = self.picker.new_resize_protocol(self.image_source.clone());
+        self.image_sliced = SlicedProtocol::new(
+            &self.picker,
+            self.image_source.clone(),
+            self.image_static.size(),
+        )
+        .unwrap();
     }
 
-    pub fn on_tick(&mut self) {
+    pub fn on_tick(&mut self) -> bool {
         READY.call_once(|| {
             // This is normally only set by nixosTest.
             if env::args().any(|arg| arg == "--tmp-demo-ready") {
@@ -213,6 +244,32 @@ impl App {
                 }
             }
         });
+
+        if let Some(viewport) = self.image_sliced_viewport {
+            let (x, y, is_moving_rightwards, is_animating) = &mut self.image_sliced_position;
+            if *is_animating {
+                *y += 1;
+                if *y > 0 && y.unsigned_abs() > viewport.height {
+                    *y = -10;
+                }
+
+                if *is_moving_rightwards {
+                    if *x >= viewport.width - self.image_static.size().width {
+                        *x = viewport.width - self.image_static.size().width - 1;
+                        *is_moving_rightwards = false;
+                    } else {
+                        *x += 1;
+                    }
+                } else {
+                    *x -= 1;
+                    if *x == 0 {
+                        *is_moving_rightwards = true;
+                    }
+                }
+                return true;
+            }
+        }
+        false
     }
 
     fn render_resized_image(&mut self, f: &mut Frame<'_>, resize: Resize, area: Rect) {
@@ -224,10 +281,9 @@ impl App {
         let block = block(name);
         let inner_area = block.inner(area);
         f.render_widget(paragraph(self.background.as_str().bg(color)), inner_area);
-        match self.show_images {
-            ShowImages::Fixed => (),
-            _ => f.render_stateful_widget(StatefulImage::new().resize(resize), inner_area, state),
-        };
+        if self.show_images != ShowImages::Fixed {
+            f.render_stateful_widget(StatefulImage::new().resize(resize), inner_area, state);
+        }
         f.render_widget(block, area);
     }
 }
@@ -249,34 +305,56 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
     let left_chunks = vertical_layout().split(chunks[0]);
     let right_chunks = vertical_layout().split(chunks[1]);
 
+    let chunks_left_top = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(left_chunks[0]);
+
     let block_left_top = block("Fixed");
-    let area = block_left_top.inner(left_chunks[0]);
+    let area = block_left_top.inner(chunks_left_top[0]);
     f.render_widget(
         paragraph(app.background.as_str()).style(Color::Yellow),
         area,
     );
-    f.render_widget(block_left_top, left_chunks[0]);
-    match app.show_images {
-        ShowImages::Resized => {}
-        _ => {
-            // Let it be surrounded by styled text.
-            let area = Rect {
-                x: area.x + 1,
-                y: area.y + 1,
-                width: area.width.saturating_sub(2),
-                height: area.height.saturating_sub(2),
-            };
+    f.render_widget(block_left_top, chunks_left_top[0]);
+    if app.show_images != ShowImages::Resized {
+        // Let it be surrounded by styled text.
+        let area = Rect {
+            x: area.x + 1,
+            y: area.y + 1,
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(2),
+        };
 
-            if let Some(placeholder_area) = app.image_static.needs_placeholder(area) {
-                let placeholder = Block::bordered()
-                    .border_type(BorderType::QuadrantOutside)
-                    .bg(Color::DarkGray);
-                f.render_widget(Clear {}, placeholder.inner(placeholder_area));
-                f.render_widget(placeholder, placeholder_area);
-            } else {
-                let image = Image::new(&app.image_static).allow_clipping(true);
-                f.render_widget(image, area);
-            }
+        if let Some(placeholder_area) = app.image_static.needs_placeholder(area) {
+            let placeholder = Block::bordered()
+                .border_type(BorderType::QuadrantOutside)
+                .bg(Color::DarkGray);
+            f.render_widget(Clear {}, placeholder.inner(placeholder_area));
+            f.render_widget(placeholder, placeholder_area);
+        } else {
+            let image = Image::new(&app.image_static).allow_clipping(true);
+            f.render_widget(image, area);
+        }
+    }
+
+    let block_middle_top = block("Sliced");
+    let area = block_middle_top.inner(chunks_left_top[1]);
+    app.image_sliced_viewport = Some(area.into());
+    f.render_widget(
+        paragraph(app.background.as_str()).style(Color::LightBlue),
+        area,
+    );
+    f.render_widget(block_middle_top, chunks_left_top[1]);
+    if app.show_images != ShowImages::Resized {
+        let size = app.image_static.size();
+        let (x, y, _, _) = app.image_sliced_position;
+        if area.width >= x + size.width {
+            let mut area = area;
+            area.x += x;
+            area.width -= x;
+            let image = SlicedImage::new(&app.image_sliced, size, y);
+            f.render_widget(image, area);
         }
     }
 
@@ -293,24 +371,38 @@ fn ui(f: &mut Frame<'_>, app: &mut App) {
     let area = block_right_bottom.inner(right_chunks[1]);
     f.render_widget(
         paragraph(vec![
-            Line::from("Key bindings:"),
-            Line::from(vec![
-                Span::from("H").green(),
-                Span::from("/"),
-                Span::from("L").green(),
-                Span::from(": resize"),
-            ]),
-            Line::from(vec![Span::from("o").green(), Span::from(": cycle image")]),
-            Line::from(vec![
-                Span::from("t").green(),
-                Span::from(format!(": toggle ({:?})", app.show_images)),
-            ]),
             Line::from(format!(
                 "Font size: {}×{}",
                 app.picker.font_size().width,
                 app.picker.font_size().height
             )),
             Line::from(format!("Protocol: {:?}", app.picker.protocol_type())),
+            Line::from("Key bindings:"),
+            Line::from(vec![
+                Span::from("H").green(),
+                Span::from("/"),
+                Span::from("L").green(),
+                Span::from(": resize panes"),
+            ]),
+            Line::from(vec![Span::from("o").green(), Span::from(": cycle image")]),
+            Line::from(vec![
+                Span::from("t").green(),
+                Span::from(format!(": toggle ({:?})", app.show_images)),
+            ]),
+            Line::from(vec![
+                Span::from("h").green(),
+                Span::from("/"),
+                Span::from("j").green(),
+                Span::from("/"),
+                Span::from("k").green(),
+                Span::from("/"),
+                Span::from("l").green(),
+                Span::from(": move"),
+            ]),
+            Line::from(vec![
+                Span::from("a").green(),
+                Span::from(": toggle animation"),
+            ]),
         ]),
         area,
     );

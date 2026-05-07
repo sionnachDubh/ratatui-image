@@ -106,12 +106,14 @@ impl Widget for SlicedImage<'_> {
             SlicedProtocol::Sixel(sliced_sixel) => {
                 let sixel = sliced_sixel.borrow_owner();
                 let skip_line_count = if self.position < 0 {
-                    image_area.height -= self.position.unsigned_abs();
+                    image_area.height = image_area
+                        .height
+                        .saturating_sub(self.position.unsigned_abs());
                     self.position.unsigned_abs()
                 } else {
                     image_area.y += self.position as u16;
-                    image_area.height =
-                        (area.height - self.position.unsigned_abs()).min(sixel.size().height);
+                    image_area.height = (area.height.saturating_sub(self.position.unsigned_abs()))
+                        .min(sixel.size().height);
                     0
                 };
                 if image_area.height > 0 {
@@ -125,12 +127,14 @@ impl Widget for SlicedImage<'_> {
             }
             SlicedProtocol::Halfblocks(halfblocks) => {
                 let skip_line_count = if self.position < 0 {
-                    image_area.height -= self.position.unsigned_abs();
+                    image_area.height = image_area
+                        .height
+                        .saturating_sub(self.position.unsigned_abs());
                     self.position.unsigned_abs()
                 } else {
                     image_area.y += self.position as u16;
-                    image_area.height =
-                        (area.height - self.position.unsigned_abs()).min(halfblocks.size().height);
+                    image_area.height = (area.height.saturating_sub(self.position.unsigned_abs()))
+                        .min(halfblocks.size().height);
                     0
                 };
 
@@ -356,10 +360,6 @@ mod sixel_slice {
             SlicedSixel::new(sixel, |s| {
                 let size = s.size;
                 let dcs_start = s.data.find("\u{1b}P").unwrap_or(0);
-                eprintln!(
-                    "from_sixel 1: {}",
-                    &s.data[0..dcs_start].replace("\x1b", "<esc>")
-                );
                 let data = &s.data[dcs_start..];
                 let header_end = find_sixel_data_start(data);
                 let (header, body) = data.split_at(header_end);
