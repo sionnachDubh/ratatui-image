@@ -168,11 +168,7 @@ impl SlicedProtocol {
         size: Option<Size>,
     ) -> Result<SlicedProtocol, Errors> {
         let size = size.unwrap_or_else(|| {
-            let font_size = picker.font_size();
-            Size::new(
-                dyn_img.width().div_ceil(font_size.width as u32) as u16,
-                dyn_img.height().div_ceil(font_size.height as u32) as u16,
-            )
+            Resize::round_pixel_size_to_cells(dyn_img.width(), dyn_img.height(), picker.font_size())
         });
         match picker.protocol_type() {
             ProtocolType::Kitty => {
@@ -187,23 +183,7 @@ impl SlicedProtocol {
                 let font_size = picker.font_size();
                 let resize = Resize::Fit(None);
 
-                let desired =
-                    Resize::round_pixel_size_to_cells(dyn_img.width(), dyn_img.height(), font_size);
-                let (dyn_img, _area) = match resize.needs_resize(
-                    &dyn_img,
-                    Some(desired),
-                    font_size,
-                    None,
-                    size,
-                    false,
-                ) {
-                    Some(area) => {
-                        let dyn_img =
-                            resize.resize(&dyn_img, font_size, area, image::Rgba([0, 0, 0, 0]));
-                        (dyn_img, area)
-                    }
-                    None => (dyn_img, desired),
-                };
+                let dyn_img = resize.resize(&dyn_img, font_size, size, image::Rgba([0, 0, 0, 0]));
 
                 let sixel = Sixel::new(dyn_img, size, picker.is_tmux)?;
 

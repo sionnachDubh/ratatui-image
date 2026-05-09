@@ -360,16 +360,18 @@ where
 }
 
 #[derive(Debug, Clone)]
-/// Resize method
+/// Resize accounting for terminal [`FontSize`].
+///
+/// Resizes images with [`FontSize`] grid boundaries.
 pub enum Resize {
-    /// Fit to area.
+    /// Fit to a [`Size`].
     ///
-    /// If the width or height is smaller than the area, the image will be resized maintaining
-    /// proportions.
+    /// If the image width or height is smaller than the target size, the image will be resized
+    /// maintaining proportions.
     ///
     /// The [FilterType] (re-exported from the [image] crate) defaults to [FilterType::Nearest].
     Fit(Option<FilterType>),
-    /// Crop to area.
+    /// Crop to size.
     ///
     /// If the width or height is smaller than the area, the image will be cropped.
     /// The behaviour is the same as using [`Image`] widget with the overhead of resizing,
@@ -401,8 +403,8 @@ pub struct CropOptions {
 }
 
 impl Resize {
-    /// Resize [`image::DynamicImage`] to fit the `size`.
-    fn resize(
+    /// Resize [`image::DynamicImage`] to fit into the [`Size`] or smaller.
+    pub fn resize(
         &self,
         image: &DynamicImage,
         font_size: FontSize,
@@ -412,8 +414,8 @@ impl Resize {
         let width = (size.width * font_size.width) as u32;
         let height = (size.height * font_size.height) as u32;
 
-        // Resize/Crop/etc., fitting a multiple of font-size, but not necessarily the area.
-        let mut image = self.resize_image(image, width, height);
+        // Resize/Crop/etc., fitting a multiple of font-size, but not necessarily the `size`.
+        let mut image = self.resize_pixels(image, width, height);
 
         if image.width() != width || image.height() != height {
             let mut bg: DynamicImage =
@@ -424,11 +426,27 @@ impl Resize {
         image
     }
 
+    /// Calculate the [`Size`] for the [`DynamicImage`] for `available` size after resizing.
+    pub fn size_for(&self, image: &DynamicImage, font_size: FontSize, available: Size) -> Size {
+        let (width, height) = self.needs_resize_pixels(
+            image,
+            (available.width as u32) * (font_size.width as u32),
+            (available.height as u32) * (font_size.height as u32),
+        );
+        Self::round_pixel_size_to_cells(width, height, font_size)
+    }
+
+    /// Calculate the "natural" [`Size`] needed to render the [`DynamicImage`] at the [`FontSize`],
+    /// without any resizing.
+    pub fn natural_size(image: &DynamicImage, font_size: FontSize) -> Size {
+        Self::round_pixel_size_to_cells(image.width(), image.height(), font_size)
+    }
+
     /// Check if [`image::DynamicImage`]'s "desired" fits into `target` and is different than `current`.
     ///
     /// The returned `Size` is the area the image needs to be resized to, depending on the resize
     /// type, or `None` if the image matches `target` perfectly at the [`FontSize`].
-    pub fn needs_resize(
+    pub(crate) fn needs_resize(
         &self,
         image: &DynamicImage,
         desired: Option<Size>,
@@ -437,9 +455,7 @@ impl Resize {
         target: Size,
         force: bool,
     ) -> Option<Size> {
-        let desired = desired.unwrap_or_else(|| {
-            Self::round_pixel_size_to_cells(image.width(), image.height(), font_size)
-        });
+        let desired = desired.unwrap_or_else(|| Self::natural_size(image, font_size));
 
         // Check if resize is needed at all.
         if !force
@@ -455,7 +471,7 @@ impl Resize {
             }
         }
 
-        let rect = self.render_area(image, font_size, target);
+        let rect = self.size_for(image, font_size, target);
         debug_assert!(
             rect.width <= target.width,
             "needs_resize exceeds area width"
@@ -470,16 +486,7 @@ impl Resize {
         None
     }
 
-    pub fn render_area(&self, image: &DynamicImage, font_size: FontSize, available: Size) -> Size {
-        let (width, height) = self.needs_resize_pixels(
-            image,
-            (available.width as u32) * (font_size.width as u32),
-            (available.height as u32) * (font_size.height as u32),
-        );
-        Self::round_pixel_size_to_cells(width, height, font_size)
-    }
-
-    fn resize_image(&self, image: &DynamicImage, width: u32, height: u32) -> DynamicImage {
+    fn resize_pixels(&self, image: &DynamicImage, width: u32, height: u32) -> DynamicImage {
         const DEFAULT_FILTER_TYPE: FilterType = FilterType::Nearest;
         const DEFAULT_CROP_OPTIONS: CropOptions = CropOptions {
             clip_top: false,
