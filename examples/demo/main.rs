@@ -260,7 +260,7 @@ impl App {
             if *is_animating {
                 pos.y += 1;
                 if pos.y > 0 && pos.y.unsigned_abs() > viewport.height {
-                    pos.y = -10;
+                    pos.y = -(self.image_sliced.size().height as i16);
                 }
 
                 if *is_moving_rightwards {
@@ -272,14 +272,16 @@ impl App {
                     {
                         pos.x = viewport
                             .width
-                            .saturating_sub(self.image_sliced.size().width + 1)
+                            .saturating_sub(self.image_sliced.size().width)
                             as i16;
                         *is_moving_rightwards = false;
                     } else {
                         pos.x += 1;
                     }
                 } else {
-                    pos.x = pos.x.saturating_sub(1);
+                    if pos.x > 0 {
+                        pos.x -= 1;
+                    }
                     if pos.x == 0 {
                         *is_moving_rightwards = true;
                     }
