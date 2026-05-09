@@ -104,8 +104,13 @@ impl Widget for SlicedImage<'_> {
                 kitty.render_with_skip(image_area, buf, skip_line_count);
             }
             SlicedProtocol::Sliced(slices) => {
-                let mut image_area = Rect::new(x, y, image_area.width, 1);
-                for slice in slices.iter().skip(skip_line_count).take(drop_line_count) {
+                let mut image_area = image_area;
+                image_area.height = 1;
+                for slice in slices
+                    .iter()
+                    .skip(skip_line_count)
+                    .take(slices.len().saturating_sub(drop_line_count))
+                {
                     slice.render(image_area, buf);
                     image_area.y += 1;
                 }
