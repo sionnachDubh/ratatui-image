@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Overview
+
+The terminal naturally has vertical scrolling. Many TUIs also follow vertical scrolling. Images
+should scroll in and out of a viewport, but `ratatui-image` had no mechanism for doing so natively.
+It would theoretically be possible for the consumer to slice images into rows, and threat each row
+as its own `Protocol` and then render one `Image` widget for only the visible rows. But in 
+practice this would incur a performance and memory footprint hit. Then, sixels use a 256 color
+palette, and `chafa` should operate on the whole image, otherwise the output quality degrades
+significantly. Kitty also internally already has the image sliced into "cells" with its 
+unicode-placeholders protocol, making this a much better natural fit for partial displaying.
+
+This realease adds the `sliced` module, bringing in `SlicedProtocol` and `SlicedImage` structs.
+
+`SlicedProtocol` takes care of the optimal image data for each protocol: Kitty needs nothing 
+special, Sixels are split up by their natural "bands" of six pixel tall columns, ITerm2 is simply
+split into several base64 PNG slices, and Halfblocks also needs nothing special.
+
+`SlicedImage`'s constructor takes a `SignedPosition`, which is relative to the "render area" given 
+to it on render, and may be negative or greater than the render area bottom Y.  
+That is, render receives the viewport, and the position may be used to display the image partially,
+at least on the vertical axis. This approach is flexible enough to also always create a viewport of
+the image's size or smaller, in cases where "viewport" doesn't apply or is not known at render 
+time, but there is a size constraint.
+
 ### Changed
 
 - `FontSize = (u16, u16)` alias became `struct FontSize { width: u16, height: u16 }`.
