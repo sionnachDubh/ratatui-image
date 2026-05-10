@@ -402,6 +402,8 @@ pub struct CropOptions {
     pub clip_left: bool,
 }
 
+const DEFAULT_BACKGROUND: Rgba<u8> = Rgba([0, 0, 0, 0]);
+
 impl Resize {
     /// Resize [`image::DynamicImage`] to fit into the [`Size`] or smaller.
     pub fn resize(
@@ -409,7 +411,7 @@ impl Resize {
         image: &DynamicImage,
         font_size: FontSize,
         size: Size,
-        background_color: Rgba<u8>,
+        background_color: Option<Rgba<u8>>,
     ) -> DynamicImage {
         let width = (size.width * font_size.width) as u32;
         let height = (size.height * font_size.height) as u32;
@@ -418,8 +420,12 @@ impl Resize {
         let mut image = self.resize_pixels(image, width, height);
 
         if image.width() != width || image.height() != height {
-            let mut bg: DynamicImage =
-                ImageBuffer::from_pixel(width, height, background_color).into();
+            let mut bg: DynamicImage = ImageBuffer::from_pixel(
+                width,
+                height,
+                background_color.unwrap_or(DEFAULT_BACKGROUND),
+            )
+            .into();
             imageops::overlay(&mut bg, &image, 0, 0);
             image = bg;
         }

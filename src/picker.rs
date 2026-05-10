@@ -40,14 +40,13 @@ pub enum Capability {
     TextSizingProtocol,
 }
 
-const DEFAULT_BACKGROUND: Rgba<u8> = Rgba([0, 0, 0, 0]);
 const STDIN_READ_TIMEOUT_MILLIS: u64 = 2000;
 
 #[derive(Clone, Debug)]
 pub struct Picker {
     font_size: FontSize,
     protocol_type: ProtocolType,
-    background_color: Rgba<u8>,
+    background_color: Option<Rgba<u8>>,
     pub(crate) is_tmux: bool,
     capabilities: Vec<Capability>,
 }
@@ -111,7 +110,7 @@ impl Picker {
             // since we're not rendering pixels. It should be roughly 1:2 ratio, and some
             // reasonable size.
             font_size: FontSize::new(10, 20),
-            background_color: DEFAULT_BACKGROUND,
+            background_color: None,
             protocol_type: ProtocolType::Halfblocks,
             is_tmux: false,
             capabilities: Vec::new(),
@@ -143,7 +142,7 @@ impl Picker {
                 if let Some(font_size) = font_size {
                     Ok(Self {
                         font_size,
-                        background_color: DEFAULT_BACKGROUND,
+                        background_color: None,
                         protocol_type,
                         is_tmux,
                         capabilities: caps,
@@ -177,7 +176,7 @@ impl Picker {
 
         Self {
             font_size: FontSize::new(10, 20),
-            background_color: DEFAULT_BACKGROUND,
+            background_color: None,
             protocol_type: ProtocolType::Halfblocks,
             is_tmux,
             capabilities: Vec::new(),
@@ -202,7 +201,7 @@ impl Picker {
 
         Self {
             font_size,
-            background_color: DEFAULT_BACKGROUND,
+            background_color: None,
             protocol_type,
             is_tmux,
             capabilities: Vec::new(),
@@ -225,8 +224,8 @@ impl Picker {
     }
 
     /// Change the default background color (transparent black).
-    pub fn set_background_color<T: Into<Rgba<u8>>>(&mut self, background_color: T) {
-        self.background_color = background_color.into();
+    pub fn set_background_color<T: Into<Rgba<u8>>>(&mut self, background_color: Option<T>) {
+        self.background_color = background_color.map(Into::into);
     }
 
     /// Returns the capabilities detected by [Picker::from_query_stdio].

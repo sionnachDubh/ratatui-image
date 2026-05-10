@@ -78,7 +78,9 @@ impl ThreadProtocol {
 
     // Get the background color that fills in when resizing.
     pub fn background_color(&self) -> Option<Rgba<u8>> {
-        self.inner.as_ref().map(|inner| inner.background_color())
+        self.inner
+            .as_ref()
+            .and_then(|inner| inner.background_color())
     }
 
     /// This function should be used when an image should be updated but the updated image is not yet available

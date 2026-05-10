@@ -138,7 +138,7 @@ impl StatefulProtocol {
     pub fn new(
         image: DynamicImage,
         font_size: FontSize,
-        background_color: Rgba<u8>,
+        background_color: Option<Rgba<u8>>,
         protocol_type: StatefulProtocolType,
     ) -> Self {
         let source = ImageSource::new(image, font_size, background_color);
@@ -170,7 +170,7 @@ impl StatefulProtocol {
     }
 
     // Get the background color that fills in when resizing.
-    pub fn background_color(&self) -> Rgba<u8> {
+    pub fn background_color(&self) -> Option<Rgba<u8>> {
         self.source.background_color
     }
 
@@ -245,7 +245,7 @@ struct ImageSource {
     /// TODO: document this; when image changes but it doesn't need a resize, force a render.
     pub hash: u64,
     /// The background color that should be used for padding or background when resizing.
-    pub background_color: Rgba<u8>,
+    pub background_color: Option<Rgba<u8>>,
 }
 
 impl ImageSource {
@@ -253,7 +253,7 @@ impl ImageSource {
     pub fn new(
         mut image: DynamicImage,
         font_size: FontSize,
-        background_color: Rgba<u8>,
+        background_color: Option<Rgba<u8>>,
     ) -> ImageSource {
         let desired = Resize::round_pixel_size_to_cells(image.width(), image.height(), font_size);
 
@@ -262,7 +262,9 @@ impl ImageSource {
         let hash = state.finish();
 
         // We only need to underlay the background color here if it's not completely transparent.
-        if background_color.0[3] != 0 {
+        if let Some(background_color) = background_color
+            && background_color.0[3] != 0
+        {
             let mut bg: DynamicImage =
                 ImageBuffer::from_pixel(image.width(), image.height(), background_color).into();
             imageops::overlay(&mut bg, &image, 0, 0);

@@ -26,8 +26,10 @@ All notable changes to this project will be documented in this file.
   - Any other instances missed here should be trivial to fix.
 - `Image` does not render with clipping under Kitty or Halfblocks, to be consistent with Sixels and
   ITerm2. See new `Image::allow_clipping` to keep existing default behavior.
-- `Resize::resize(&self, image: &DynamicImage, font_size: FontSize, size: Size, background_color: Rgba<u8>) -> DynamicImage`
+- `Resize::resize(&self, image: &DynamicImage, font_size: FontSize, size: Size, background_color: Option<Rgba<u8>>) -> DynamicImage`
   resizes a `DynamicImage` to the size, either `Fit`, `Crop`, or `Scale`d.
+- `Picker::set_background_color`, `StatefulProtocol::new`, `StatefulProtocol::background_color`,
+  `ThreadProtocol::background_color` now take or return an `Option<Rgba[u8]>` for background color.
 
 ### Added
 

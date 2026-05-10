@@ -183,7 +183,7 @@ impl SlicedProtocol {
                 let font_size = picker.font_size();
                 let resize = Resize::Fit(None);
 
-                let dyn_img = resize.resize(&dyn_img, font_size, size, image::Rgba([0, 0, 0, 0]));
+                let dyn_img = resize.resize(&dyn_img, font_size, size, None);
 
                 let sixel = Sixel::new(dyn_img, size, picker.is_tmux)?;
 
@@ -438,7 +438,6 @@ mod sixel_slice {
 
     #[cfg(test)]
     mod tests {
-        use image::Rgba;
         use ratatui::layout::Size;
 
         use crate::{FontSize, Resize, protocol::sixel::Sixel, sliced::sixel_slice::SlicedSixel};
@@ -475,8 +474,7 @@ mod sixel_slice {
             let font_size = FontSize::new(8, 16);
             let sliced_sixels = images.map(|p| {
                 let dyn_img = image::ImageReader::open(p).unwrap().decode().unwrap();
-                let dyn_img =
-                    Resize::Fit(None).resize(&dyn_img, font_size, size, Rgba([0, 0, 0, 0]));
+                let dyn_img = Resize::Fit(None).resize(&dyn_img, font_size, size, None);
                 let sixel = Sixel::new(dyn_img, size, false).unwrap();
                 SlicedSixel::from_sixel(sixel, font_size.height, false)
             });
