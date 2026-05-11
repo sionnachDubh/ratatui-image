@@ -12,6 +12,7 @@ pub struct Parser {
 pub enum ResponseParseState {
     Unknown,
     CSIResponse,
+    OSCResponse,
     KittyResponse,
 }
 
@@ -22,6 +23,7 @@ pub enum Response {
     RectangularOps,
     CellSize(Option<(u16, u16)>),
     CursorPositionReport(u16, u16),
+    Background(u8, u8, u8),
     Status,
 }
 
@@ -34,15 +36,15 @@ pub struct QueryStdioOptions {
     ///
     /// [Text Sizing Protocol] <https://sw.kovidgoyal.net/kitty/text-sizing-protocol//>
     pub text_sizing_protocol: bool,
+    /// Query the terminal background color. The result will be
+    /// [`crate::picker::Capability::Background`] in the capabilities.
+    ///
+    /// This can be useful for sixels which have binary transparency instead of an alpha channel.
+    pub terminal_background_color_osc: bool,
     /// Blacklist protocols from the detection query. Currently only kitty can be detected, so that
     /// is the only ProtocolType that can have any effect here.
     /// [`crate::picker::Picker`] currently sets ProtocolType::Kitty for WezTerm and Konsole.
-    blacklist_protocols: Vec<ProtocolType>,
-}
-impl QueryStdioOptions {
-    pub(crate) fn blacklist_protocols(&mut self, protocol_types: Vec<ProtocolType>) {
-        self.blacklist_protocols = protocol_types;
-    }
+    pub blacklist_protocols: Vec<ProtocolType>,
 }
 
 impl Default for QueryStdioOptions {
@@ -50,6 +52,7 @@ impl Default for QueryStdioOptions {
         Self {
             timeout: Duration::from_millis(STDIN_READ_TIMEOUT_MILLIS),
             text_sizing_protocol: false,
+            terminal_background_color_osc: false,
             blacklist_protocols: Vec::new(),
         }
     }
@@ -104,8 +107,14 @@ impl Parser {
         // iTerm2 proprietary, unknown response, untested so far.
         //write!(buf, "{escape}[1337n").unwrap();
 
+        const BEL: &str = "\u{7}";
+
+        if options.terminal_background_color_osc {
+            // Background color
+            write!(buf, "{escape}]11;?{BEL}").unwrap();
+        }
+
         if options.text_sizing_protocol {
-            const BEL: &str = "\u{7}";
             // Send CPR (Cursor Position Report) and Text Sizing Protocol commands.
             // https://sw.kovidgoyal.net/kitty/text-sizing-protocol/#detecting-if-the-terminal-supports-this-protocol
             // We need to write a CPR, a resized space, and CPR again, to see if it moved the cursor
@@ -127,6 +136,7 @@ impl Parser {
         write!(buf, "{end}").unwrap();
         buf
     }
+
     pub fn push(&mut self, next: char) -> Vec<Response> {
         match self.sequence {
             ResponseParseState::Unknown => {
@@ -141,6 +151,9 @@ impl Parser {
 
                     ("[", _) => {
                         self.sequence = ResponseParseState::CSIResponse;
+                    }
+                    ("]", _) => {
+                        self.sequence = ResponseParseState::OSCResponse;
                     }
                     _ => {}
                 };
@@ -203,7 +216,33 @@ impl Parser {
                     }
                 };
             }
-
+            ResponseParseState::OSCResponse => {
+                self.data.push(next);
+                if next == '\u{7}' || self.data.ends_with("\x1b\\") {
+                    let Some(rgb) = self.data.split("rgb:").nth(1) else {
+                        return self.restart();
+                    };
+                    let rgb = rgb.trim_matches(|c| c == '\x07' || c == '\x1b' || c == '\\');
+                    let parts: Vec<&str> = rgb.split('/').collect();
+                    if parts.len() != 3 {
+                        return self.restart();
+                    }
+                    let (Some(r), Some(g), Some(b)) = (
+                        u16::from_str_radix(parts[0], 16).ok(),
+                        u16::from_str_radix(parts[1], 16).ok(),
+                        u16::from_str_radix(parts[2], 16).ok(),
+                    ) else {
+                        return self.restart();
+                    };
+                    self.restart();
+                    // Scale from 16-bit to 8-bit
+                    return vec![Response::Background(
+                        (r >> 8) as u8,
+                        (g >> 8) as u8,
+                        (b >> 8) as u8,
+                    )];
+                }
+            }
             ResponseParseState::KittyResponse => match next {
                 '\\' => {
                     let caps = match &self.data[..] {

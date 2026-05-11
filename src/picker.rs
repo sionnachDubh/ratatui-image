@@ -38,6 +38,8 @@ pub enum Capability {
     CellSize(Option<(u16, u16)>),
     /// Reports supporting text sizing protocol.
     TextSizingProtocol,
+    /// Reports a background color.
+    Background(u8, u8, u8),
 }
 
 const STDIN_READ_TIMEOUT_MILLIS: u64 = 2000;
@@ -123,8 +125,8 @@ impl Picker {
             // WezTerm could use Sixel, but iTerm2 (detected later is better).
             // Konsole's Sixel implementation is buggy: https://github.com/ratatui/ratatui-image?tab=readme-ov-file#compatibility-matrix
             // Neither implement the placeholder part of kitty correctly.
-            options_with_blacklist
-                .blacklist_protocols(vec![ProtocolType::Kitty, ProtocolType::Sixel]);
+            options_with_blacklist.blacklist_protocols =
+                vec![ProtocolType::Kitty, ProtocolType::Sixel];
         }
 
         // Write and read to stdin to query protocol capabilities and font-size.
@@ -516,6 +518,7 @@ fn interpret_parser_responses(
                 cursor_position_reports.push((x, y));
                 None
             }
+            Response::Background(r, g, b) => Some(Capability::Background(*r, *g, *b)),
             Response::Status => None,
         } {
             capabilities.push(capability);

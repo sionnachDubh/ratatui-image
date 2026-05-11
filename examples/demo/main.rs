@@ -25,7 +25,7 @@ use ratatui::{
 };
 use ratatui_image::{
     Image, Resize, StatefulImage,
-    picker::Picker,
+    picker::{Picker, cap_parser::QueryStdioOptions},
     protocol::{Protocol, StatefulProtocol},
     sliced::{SignedPosition, SlicedImage, SlicedProtocol},
 };
@@ -88,7 +88,14 @@ impl App {
         };
         let image_source = image::ImageReader::open(image).unwrap().decode().unwrap();
 
-        let picker = Picker::from_query_stdio().unwrap();
+        let picker = Picker::from_query_stdio_with_options(QueryStdioOptions {
+            // Query everything so that this is tested in demo and CI, but it's not used in the
+            // demo.
+            terminal_background_color_osc: true,
+            text_sizing_protocol: true,
+            ..Default::default()
+        })
+        .unwrap();
 
         let image_static = picker
             .new_protocol(image_source.clone(), size(), Resize::Fit(None))
