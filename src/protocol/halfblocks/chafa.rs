@@ -102,7 +102,9 @@ pub fn encode(img: &DynamicImage, size: Size) -> Option<Vec<HalfBlock>> {
         for y in 0..height {
             for x in 0..width {
                 let c = chafa_canvas_get_char_at(canvas, x as i32, y as i32);
-                let symbol = char::from_u32(c).unwrap_or(' ');
+                let symbol = char::from_u32(c)
+                    .filter(|c| !c.is_ascii_control())
+                    .unwrap_or(' ');
 
                 let mut fg_color: i32 = 0;
                 let mut bg_color: i32 = 0;
